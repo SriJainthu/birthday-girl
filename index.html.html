@@ -57,6 +57,18 @@ html,body{height:100%;overflow:hidden;background:#f6ede2;font-family:'Cormorant 
 #again.show{opacity:.7;pointer-events:auto}
 @media(max-width:700px){#msg{left:0;right:0;max-width:100%;text-align:center;bottom:5%}}
 @media(prefers-reduced-motion:reduce){#heart{animation:none}}
+@keyframes jelly{
+ 0%{transform:translateY(var(--dy)) scale(1,1)}
+ 16%{transform:translateY(var(--dy)) scale(1.38,.6)}
+ 34%{transform:translateY(var(--dy)) scale(.82,1.22)}
+ 52%{transform:translateY(var(--dy)) scale(1.15,.88)}
+ 70%{transform:translateY(var(--dy)) scale(.95,1.06)}
+ 86%{transform:translateY(var(--dy)) scale(1.02,.99)}
+ 100%{transform:translateY(var(--dy)) scale(1,1)}
+}
+body{animation:pageIn 1.2s ease both}
+@keyframes pageIn{from{opacity:0}}
+#red{will-change:opacity}
 </style>
 </head>
 <body>
@@ -174,7 +186,7 @@ async function hit(){
   heart.classList.add('hit');                                   // shake
   bow.style.transition='opacity .5s'; bow.style.opacity=0;
   document.querySelector('#intro .top').style.opacity=0;
-  for(let i=0;i<10;i++){                                        // tiny sparks
+  for(let i=0;i<10;i++){
     const s=document.createElement('div'); s.className='pt'; s.textContent='♥';
     s.style.cssText=`left:${hc.x}px;top:${hc.y}px;font-size:${7+Math.random()*7}px;font-style:normal;color:#d63456`;
     $('intro').appendChild(s);
@@ -183,24 +195,32 @@ async function hit(){
   }
   await sleep(520);
 
-  // heart falls down
+  // fall
   heart.classList.remove('hit'); heart.style.animation='none'; void heart.offsetWidth;
-  const landY=innerHeight*.62, lx=hc.x;
+  const landY=innerHeight*.62, dy=landY-hc.y;
+  heart.style.setProperty('--dy',dy+'px');
   heart.style.transition='transform .8s cubic-bezier(.5,0,.9,.5)';
-  heart.style.transform=`translateY(${landY-hc.y}px) rotate(10deg)`;
-  await sleep(820);
+  heart.style.transform=`translateY(${dy}px)`;
+  await sleep(800);
+
+  // jelly landing: squish + wobble
+  heart.classList.add('calm');
+  heart.style.transition='none'; heart.style.transformOrigin='50% 100%';
+  heart.style.animation='jelly 1s ease-in-out';
+  await sleep(1000);
+  heart.style.animation='none'; heart.style.transformOrigin='50% 50%'; void heart.offsetWidth;
 
   // the heart itself expands to fill the screen
   const red=$('red');
   red.style.transition='none'; red.style.clipPath='none'; red.style.opacity=0; red.style.visibility='visible';
-  heart.classList.add('calm'); void red.offsetWidth;
+  void red.offsetWidth;
   const k=Math.max(innerWidth,innerHeight)*2.6/heart.getBoundingClientRect().width;
   heart.style.willChange='transform';
   heart.style.transition='transform 1.3s cubic-bezier(.65,0,.25,1)';
-  heart.style.transform=`translateY(${landY-hc.y}px) scale(${k})`;
+  heart.style.transform=`translateY(${dy}px) scale(${k})`;
   await sleep(850);
   red.style.transition='opacity .6s'; red.style.opacity=1;
-  await sleep(400); red.classList.add('go');
+  await sleep(400); red.classList.add('go'); prep();            // build the tree while red text plays
   await sleep(700); $('intro').style.display='none';
   await sleep(4600);
 
@@ -222,7 +242,7 @@ function inside(px,py,m=1){
   return Math.pow(x*x+y*y-1,3)-x*x*y*y*y<0 && (m>=1||Math.pow(x*x/m/m+y*y/m/m-1,3)-x*x*y*y*y/m/m/m/m/m<0);
 }
 function build(){
-  const d=Math.min(devicePixelRatio||1,2); W=innerWidth; H=innerHeight;
+  const d=Math.min(devicePixelRatio||1,1.5); W=innerWidth; H=innerHeight;
   cv.width=W*d; cv.height=H*d; c.setTransform(d,0,0,d,0,0);
   seed=7; segs=[]; hearts=[]; petals=[]; trunk=[];
   const bx=W>700?W*.64:W*.5, R=Math.min(H*.29,W>700?W*.21:W*.4), cy=H*.4;
@@ -258,28 +278,42 @@ function build(){
   }
 }
 function hp(){ c.beginPath(); c.moveTo(0,.7); c.bezierCurveTo(-1.2,-.1,-.7,-1,0,-.4); c.bezierCurveTo(.7,-1,1.2,-.1,0,.7); }
-function heartPath(x,y,s,r,col,hl,a){
-  c.save(); c.translate(x,y); c.rotate(r); c.scale(s,s);
-  c.globalAlpha=a; c.fillStyle=col; hp(); c.fill();
-  c.globalAlpha=a*.6; c.fillStyle=hl; c.translate(-.3,-.2); c.scale(.5,.5); hp(); c.fill();
-  c.restore();
+const spr={};
+function sprite(col,hl){                       // each heart colour is drawn once, then reused
+  if(spr[col])return spr[col];
+  const s=document.createElement('canvas'); s.width=s.height=100; const x=s.getContext('2d');
+  const P=()=>{x.beginPath();x.moveTo(0,.7);x.bezierCurveTo(-1.2,-.1,-.7,-1,0,-.4);x.bezierCurveTo(.7,-1,1.2,-.1,0,.7);};
+  x.translate(50,50); x.scale(40,40); x.fillStyle=col; P(); x.fill();
+  x.globalAlpha=.6; x.fillStyle=hl; x.translate(-.3,-.2); x.scale(.5,.5); P(); x.fill();
+  return spr[col]=s;
+}
+function heartPath(px,py,s,r,col,hl,a){
+  c.save(); c.translate(px,py); c.rotate(r); const k=s/40; c.scale(k,k);
+  c.globalAlpha=a; c.drawImage(sprite(col,hl),-50,-50); c.restore();
 }
 function star(x,y,r,a){
-  c.save(); c.globalAlpha=a; c.fillStyle='#fffdf0'; c.shadowColor='#fff3b0'; c.shadowBlur=4;
+  c.save(); c.globalAlpha=a; c.fillStyle='#fffdf0';
   c.beginPath(); c.moveTo(x,y-r); c.quadraticCurveTo(x,y,x+r,y); c.quadraticCurveTo(x,y,x,y+r);
   c.quadraticCurveTo(x,y,x-r,y); c.quadraticCurveTo(x,y,x,y-r); c.fill(); c.restore();
 }
-function startTree(){ build(); started=true; t0=performance.now(); requestAnimationFrame(loop); }
-addEventListener('resize',()=>{ if(started){ build(); } });
+let glowC,mistC;
+function fx(){                                  // glow + mist are drawn once here, not every frame
+  const mk=()=>{const q=document.createElement('canvas'); q.width=q.height=256; return q;};
+  glowC=mk(); mistC=mk();
+  let x=glowC.getContext('2d'), g=x.createRadialGradient(128,128,0,128,128,128);
+  g.addColorStop(0,'rgba(255,170,190,.45)'); g.addColorStop(1,'rgba(255,170,190,0)'); x.fillStyle=g; x.fillRect(0,0,256,256);
+  x=mistC.getContext('2d'); g=x.createRadialGradient(128,128,0,128,128,128);
+  g.addColorStop(0,'rgba(255,251,246,1)'); g.addColorStop(.5,'rgba(255,251,246,.85)'); g.addColorStop(1,'rgba(255,251,246,0)');
+  x.fillStyle=g; x.fillRect(0,0,256,256);
+}
+function prep(){ build(); fx(); }
+function startTree(){ started=true; t0=performance.now(); requestAnimationFrame(loop); }
+addEventListener('resize',()=>{ if(started) prep(); });
 
 function loop(now){
   const el=(now-t0)/1000, T=clamp(el/3.4,0,1.2), B=clamp((el-2.6)/3.2,0,1);
   c.clearRect(0,0,W,H);
-  if(B>0){                                                  // soft glow behind the canopy
-    const g=c.createRadialGradient(canopy.x,canopy.y,0,canopy.x,canopy.y,canopy.R*1.4);
-    g.addColorStop(0,'rgba(255,170,190,.45)'); g.addColorStop(1,'rgba(255,170,190,0)');
-    c.globalAlpha=B; c.fillStyle=g; c.fillRect(0,0,W,H); c.globalAlpha=1;
-  }
+  if(B>0){ const g=canopy.R*1.4; c.globalAlpha=B; c.drawImage(glowC,canopy.x-g,canopy.y-g,g*2,g*2); c.globalAlpha=1; }
   const tp=ease(T/.3);                                      // trunk grows up from the bottom
   if(tp>0){ const n=Math.max(1,Math.round(tp*NT)); c.fillStyle='#3b2622'; c.beginPath();
     for(let i=0;i<=n;i++) c.lineTo(trunk[i].x-trunk[i].w/2,trunk[i].y);
@@ -297,12 +331,7 @@ function loop(now){
     if(h.tw && p>.9){ const t=Math.sin(el*2.6+h.ph*5);
       if(t>.85) star(h.x-h.s*.3,h.y-h.s*.3,h.s*.9,(t-.85)/.15); }
   }
-  if(tp>0){                                                 // white mist at the foot of the tree
-    c.save(); c.globalAlpha=tp; c.translate(canopy.x,H); c.scale(1,.6);
-    const g=c.createRadialGradient(0,0,0,0,0,canopy.R*1.3);
-    g.addColorStop(0,'rgba(255,251,246,1)'); g.addColorStop(.5,'rgba(255,251,246,.85)'); g.addColorStop(1,'rgba(255,251,246,0)');
-    c.fillStyle=g; c.fillRect(-canopy.R*1.5,-canopy.R*2.5,canopy.R*3,canopy.R*2.6); c.restore();
-  }
+    if(tp>0){ const w=canopy.R*2.6, h=canopy.R*1.56; c.globalAlpha=tp; c.drawImage(mistC,canopy.x-w/2,H-h/2,w,h); c.globalAlpha=1; }
   if(B>.6 && now-lastSpawn>110 && petals.length<90){
     lastSpawn=now; const h=hearts[(Math.random()*hearts.length)|0];
     petals.push({x:h.x,y:h.y,vy:25+Math.random()*40,ph:Math.random()*6,r:Math.random()*6,vr:(Math.random()-.5)*2,s:h.s*.6,col:h.col,hl:h.hl});
